@@ -4,7 +4,7 @@ from numpy.linalg import cholesky
 
 
 def l2_log(x, C, z, u, rho):
-    v = x-z+u
+    v = x - z + u
     f = np.sum(np.log(1.0 + np.exp(np.dot(x,np.transpose(C))))) + 1/2.0 * rho * np.dot(np.transpose(v),v)
     eCx = np.exp(np.dot(x, np.transpose(C)))
     g = np.dot(np.transpose(C), (eCx/(1+eCx)))+ rho*v
