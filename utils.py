@@ -41,6 +41,7 @@ def all_regression(datahub, logistic=True, verbose=False):
         beta = np.array([np.nan for i in range(p)])
     if logistic:
         yPred = sigmoid(data.dot(beta[1:]) + beta[0])
+        AF = np.sum(y)
         try:
             rocauc = roc_auc_score(y, yPred)
             cost = log_loss(y, yPred)
@@ -49,7 +50,7 @@ def all_regression(datahub, logistic=True, verbose=False):
             rocauc = np.nan
             cost = np.nan
             zeroOne = np.nan
-        return beta, cost, rocauc, zeroOne
+        return beta, cost, rocauc, zeroOne, AF
 
     else: #for linear regression
         yPred = data.dot(beta[1:]) + beta[0]
@@ -306,7 +307,8 @@ class DataCenter(object):
             if not scheduled:
                 sz = lambda x, y, sst: step
             else:
-                sz = lambda x, y, sst: step / (1.0 + x) ** 0.51 #if x < 500 else step/(1.0 + x-500)**0.51
+                #sz = lambda x, y, sst: step / ((1.0 + x) ** 0.51) #if x < 500 else step/(1.0 + x-500)**0.51
+                sz  = lambda x, y, sst: step if x < 500 else step/((1.0 + x-500)**0.51)
 
         i, j, grad = 1, 0, 0
         gg, sstheta  = 0, 0 #np.sqrt(_eps)
@@ -343,9 +345,9 @@ class DataCenter(object):
             sstheta = ssTheta(sstheta, grad, gg)
             j += 1
             if verbose and j % 10 == 0:
-                BETA[:, j / 10] = beta
+                BETA[:, j / 10] = beta.ravel()
         if verbose:
-            BETA[:,max_iters / 10] = beta
+            BETA[:,max_iters / 10] = beta.ravel()
             return BETA
 
         return beta, j
@@ -417,7 +419,7 @@ class DataCenter(object):
                 beta -= eta * update
             if k % l == 0:
                 if verbose and i % 10 == 0:
-                    BETA[:,i / 10] = beta
+                    BETA[:,i / 10] = beta.ravel()
                 i += 1
                 t += 1
                 betan = betaBar / float(l)
@@ -443,12 +445,12 @@ class DataCenter(object):
                 betaOld = betan
                 betaBar = 0
             if verbose and i % 10 == 0:
-                BETA[:,i / 10] = beta
+                BETA[:,i / 10] = beta.ravel()
 
             k += 1
             i += 1
         if verbose:
-            BETA[:,max_iters / 10]=beta
+            BETA[:,max_iters / 10]=beta.ravel()
             return BETA
 
         return beta
@@ -478,20 +480,26 @@ class DataCenter(object):
 
 
 
-    def avgLogistic(self, unaveraged = False):
-        if unaveraged:
+    def avgLogistic(self, weighted = False):
+        if not weighted:
             repoBetas = np.zeros((len(self.repos), self.dim))
             for i, repo in enumerate(self.repos):
                 repoBetas[i,:] = repo.localLogistic()
-            else:
-                return np.nanmean(repoBetas, axis=0)
+            return np.nanmean(repoBetas, axis=0)
         else:
-            average = np.zeros(self.dim)
-            for repo in self.repos:
+            repoBetas = []
+            n = 0
+            for i, repo in enumerate(self.repos):
                 beta = repo.localLogistic()
-                if not np.any(np.isnan(beta[0])):  # nans appear b/c of pure classes at repos
-                    average += repo.X.shape[0]/float(self.k) * beta
-            return average
+                if not np.any(np.isnan(beta[0])):
+                    repoBetas.append(beta * repo.num_inds())
+                    n += repo.num_inds()
+                else:
+                    pdb.set_trace()
+            repoBetas = np.array(repoBetas)
+            repoBetas /= float(n)
+
+        return np.sum(repoBetas, axis = 0)
 
     def avgLinearReg(self):
         avg = np.zeros(self.dim + 1)
