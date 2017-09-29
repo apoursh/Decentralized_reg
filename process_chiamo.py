@@ -19,7 +19,7 @@ def reader(fp):
   while len(line) > 0:   # Poor mans' end of line detection
     line = line[:-2].split(' ')
     snp, rsid, pos = line[0], line[1], line[2]
-    gts = [float(line[i + 1]) + float(line[i + 2]) * 2 for i in range(5, num_inds)]
+    gts = [float(line[i + 1]) + float(line[i + 2]) * 2 for i in range(5, num_inds,3)]
     yield snp, rsid, pos, gts
     line =  fp.readline()
 
@@ -67,8 +67,10 @@ def read_datasets(loc_fname, shuffle, store_name='test.h5', seed=25):
   if shuffle:
     np.random.seed(seed)
     np.random.shuffle(data_order)
-  with h5py.File(store_name, 'w-') as store:
-    filled, dir_num, num_inds_in_file = 0, 0, None
+  with h5py.File(store_name, 'w-', libver='latest', swmr=True) as store:
+    store.attrs['has_local_AF'] = False
+    store.attrs['normalized']   = False
+    filled, dir_num = 0, 0
     for filepath, status in to_read:
       directory = directories[dir_num]
       logging.debug("--Working on: " + filepath)
@@ -76,20 +78,19 @@ def read_datasets(loc_fname, shuffle, store_name='test.h5', seed=25):
       # see if there are new individuals
       if directory not in filepath:
         # Logically this should be executed once per every cohort
-        filled = len(gts)
+        filled += len(gts)
         dir_num += 1
-        num_inds_in_file = None
         # we are done with this directory! write the status!
-        dset = current_group.require_dataset('Status', (n_tot,), dtype=np.int8)
+        dset = store.require_dataset('meta/Status', (n_tot,), dtype=np.int8)
         dset[to_fill,] = status
       with gzip.open(filepath, 'rb') as file_pointer:
         current_group = store.require_group(chrom)
         gen = reader(file_pointer)
         i = 0
         for snp, rsid, pos, gts in gen:
-          if num_inds_in_file is None:
-            to_fill = data_order[filled:len(gts)]
-            to_fill, gts = zip(*sorted(zip(to_fill, gts)))
+          to_fill = data_order[filled:filled+len(gts)]
+          to_fill, gts = zip(*sorted(zip(to_fill, gts))) #TODO fix this so 
+            # We don't have to sort every time
           dset = current_group.require_dataset(pos, (n_tot,), dtype=np.float32)
           # check to make sure ref/alts/rsids are not screwed up
           if 'rsid' in dset.attrs:
@@ -101,24 +102,28 @@ def read_datasets(loc_fname, shuffle, store_name='test.h5', seed=25):
             dset.attrs['snp'] = snp
           dset[to_fill,] = gts
           i += 1
-          if i > 3:
+          if i > 100:
             break
         # end of generator loop
       # end of context manager for filepath
     # end of to_read loop
+    dset = store.require_dataset('meta/Status', (n_tot,), dtype=np.int8)
+    dset[to_fill,] = float(status)
 
 
 
 if __name__=='__main__':
-  with gzip.open('../WTCCC_data/EGAD00000000002/Oxstat_format/NBS_01_chiamo.gz', 'rb') as fp:
+  with gzip.open('../WTCCC_data/EGAD00000000002/Oxstat_format/NBS_04_chiamo.gz', 'rb') as fp:
     gen = reader(fp)
+
     i = 0
     for snp, rsid, pos, item in gen:
-      print item 
-      i += 1
-      print i
-      if i > 3:
-        break
-
+      pdb.set_trace()
+#      print item 
+#      i += 1
+#      print i
+#      if i > 3:
+#        break
+#
 
 
